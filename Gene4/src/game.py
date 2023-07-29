@@ -1,10 +1,13 @@
 import random
-
 import comms
 from object_types import ObjectTypes
 import math
 import sys
 from enum import Enum
+
+# Team Name: Only Leo
+# Bot Name: Gene mk4
+
 
 class TankState(Enum):
     """
@@ -47,6 +50,7 @@ class Game:
         self.tank_current_movement_direction = None
         self.tank_current_path = None
         self.tank_current_PU_target = None
+        self.check_pu = 10
     
 
         #Tank object detection
@@ -124,6 +128,10 @@ class Game:
             except KeyError:
                 pass
             try:
+                if self.tank_detectable_object[deleted_object_id]["type"] == ObjectTypes.POWERUP:
+                    self.tank_state = TankState.DEFENSIVE
+                    self.tank_current_path = None
+                    self.tank_current_movement_direction = None
                 del self.tank_detectable_object[deleted_object_id]
             except KeyError:
                 pass
@@ -279,16 +287,21 @@ class Game:
             # First priority to cancel all path and find a new random angle
             case 1:
                 plane = near_plane[0]
-                if self.tank_state != TankState.DEFENSIVE:
-                        self.tank_state = TankState.DEFENSIVE
-                        self.tank_current_path = None
-                        self.tick = -1
-                if self.tank_state is TankState.GO_FOR_PU:
+                if self.tank_state == TankState.GO_FOR_PU:
                     try:
                         del self.tank_detectable_object[self.tank_current_PU_target]
                     except KeyError:
                         pass
                     self.tank_current_PU_target = None
+                    self.tank_state = TankState.DEFENSIVE
+                    self.tank_current_path = None
+                    self.tank_current_movement_direction = None
+                if self.tank_state != TankState.DEFENSIVE:
+                        self.tank_state = TankState.DEFENSIVE
+                        self.tank_current_path = None
+                        self.tank_current_movement_direction = None
+                        self.tick = -1
+                
                     
                 match(plane):
                     case "top_plane":
@@ -339,6 +352,9 @@ class Game:
         This is where you should write your bot code to process the data and respond to the game.
         """
         pause_tick = False
+        
+        #Check PU when value is less than 0
+        
         # Write your code here... For demonstration, this bot just shoots randomly every turn.
         post_message = {}
 
@@ -348,7 +364,8 @@ class Game:
             self.tank_current_movement_direction = self.go_random_direction()
 
         #Check if there is important powerups!! when defensive mode
-        if self.tank_state is TankState.DEFENSIVE:
+        if self.tank_state is TankState.DEFENSIVE and self.check_pu < 0:
+            self.check_pu = 10
             for key in self.tank_detectable_object:
                 object_game = self.tank_detectable_object[key]
                 if object_game["type"] is ObjectTypes.POWERUP.value:
@@ -367,6 +384,8 @@ class Game:
                 #If Path is None keep moving
                 if self.tank_current_path is None:
                     post_message["move"] = self.tank_current_movement_direction
+                
+                self.check_pu -= 1
 
             case TankState.ATTACK:
 
@@ -385,9 +404,19 @@ class Game:
                     self.tank_current_path = None
             
             case TankState.GO_FOR_PU:
-                pause_tick = True
-                if self.tank_current_path is None or self.tank_current_path != self.tank_detectable_object[self.tank_current_PU_target]:
-                    self.tank_current_path = self.tank_detectable_object[self.tank_current_PU_target]
+                try:
+                    pause_tick = True
+                    if self.tank_current_path is None or self.tank_current_path != self.tank_detectable_object[self.tank_current_PU_target]["position"]:
+                        self.tank_current_path = self.tank_detectable_object[self.tank_current_PU_target]["position"]
+                        post_message["path"] = self.tank_current_path
+                except KeyError:
+                    self.tank_state = TankState.DEFENSIVE
+                    self.tank_current_PU_target = None
+                    #re-initialise var
+                    self.tick = -1
+                    self.tank_current_movement_direction = None
+                    self.tank_current_path = None
+                
             case _:
                 pass
         
