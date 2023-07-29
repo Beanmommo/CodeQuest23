@@ -117,10 +117,44 @@ class Game:
         #implement algorithm for items of interest around tank
         for key_object in self.objects:
             object_game = self.objects[key_object]
+
+            #Skip boundaries 
+            if object_game["type"] == ObjectTypes.CLOSING_BOUNDARY.value or object_game["type"] == ObjectTypes.BOUNDARY.value:
+                continue
             
+            #Check if near 500 unit of TANK
+            #TODO: Check distance of object between tank Eliminate if too far
+            object_pos = object_game["position"]
+            distance_from_object = self.get_target_distance_from_tank(object_pos)
+            if distance_from_object > 300:
+                continue
+            # DO something with it
+            match object_game["type"]:
+                case ObjectTypes.TANK.value:
+                    print("TANK DETECTED", file=sys.stderr)
+                case ObjectTypes.BULLET.value:
+                    print("BULLET DETECTED", file=sys.stderr)
+                case ObjectTypes.WALL.value:
+                    print("WALL DETECTED", file=sys.stderr)
+                case ObjectTypes.DESTRUCTIBLE_WALL.value:
+                    print("DESTRUCTIBEL WALL DETECETED", file=sys.stderr)
+                case ObjectTypes.BOUNDARY.value:
+                    # Skip boundary object type
+                    continue
+                case ObjectTypes.CLOSING_BOUNDARY.value:
+                    # Skip Closing Boundary object type
+                    continue
+                case ObjectTypes.POWERUP.value:
+                    print("POWERUP DETECETD", file=sys.stderr)
+                case _:
+                    continue
+
             
 
             pass
+        print("-----------END OF Obv----------", file=sys.stderr)
+        print(self.tank_id, file=sys.stderr)
+        print("-----------END OF Obv----------", file=sys.stderr)
 
         return True
     
@@ -158,9 +192,6 @@ class Game:
             post_message["move"] = self.tank_current_movement_direction
 
         #Check object surrounding tank
-        print(self.top_left_boundary, file=sys.stderr)
-        print(self.bot_left_boundary, file=sys.stderr)
-        print(self.bot_right_boundary, file=sys.stderr)
-        print(self.top_right_boundary, file=sys.stderr)
+        
         #Post message
         comms.post_message(post_message)
