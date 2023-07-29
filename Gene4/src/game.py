@@ -4,7 +4,13 @@ import comms
 from object_types import ObjectTypes
 import math
 import sys
+from enum import Enum
 
+class TankState(Enum):
+    DEFENSIVE = 0
+    GO_FOR_PU = 1
+    ATTACK = 2
+    
 
 class Game:
     """
@@ -26,13 +32,17 @@ class Game:
         #Tank information
         self.my_tank_dict = None
         self.enemy_tank_dict = None
+        self.tank_state = TankState.DEFENSIVE
 
         #Current Tank movement
         self.tank_current_movement_direction = None
         self.tank_current_path = None
 
         #Tank object detection
+        self.tank_detectable_object = {}
 
+        #Game Info
+        self.tick = 0
         # We will store all game objects here
         self.objects = {}
 
@@ -102,6 +112,10 @@ class Game:
                 del self.objects[deleted_object_id]
             except KeyError:
                 pass
+            try:
+                del self.tank_detectable_object[deleted_object_id]
+            except KeyError:
+                pass
 
         # Update your records of the new and updated objects in the game
         # NOTE: you might want to do some additional logic here. For example check if a new bullet has been shot or a
@@ -131,6 +145,10 @@ class Game:
             object_pos = object_game["position"]
             distance_from_object = self.get_target_distance_from_tank(object_pos)
             if distance_from_object > 300:
+                try:
+                    del self.tank_detectable_object[key_object]
+                except KeyError:
+                    pass
                 continue
             # DO something with it
             match object_game["type"]:
@@ -138,12 +156,21 @@ class Game:
                     if key_object == self.tank_id:
                         continue
                     else:
+                        # add object to tank_detectable_object
+                        self.tank_detectable_object[key_object] = object_game
                         pass
                 case ObjectTypes.BULLET.value:
+                    # add object to tank_detectable_object
+                    self.tank_detectable_object[key_object] = object_game
                     pass
                 case ObjectTypes.WALL.value:
+                    # Detect if it is so near, get other directionn
+                    # add object to tank_detectable_object
+                    self.tank_detectable_object[key_object] = object_game
                     pass
                 case ObjectTypes.DESTRUCTIBLE_WALL.value:
+                    # add object to tank_detectable_object
+                    self.tank_detectable_object[key_object] = object_game
                     pass
                 case ObjectTypes.BOUNDARY.value:
                     # Skip boundary object type
@@ -155,9 +182,6 @@ class Game:
                     pass
                 case _:
                     continue
-
-            
-
             pass
 
         return True
@@ -170,7 +194,27 @@ class Game:
 
         return math.sqrt((target_pos[0] - self.my_tank_dict["position"][0])**2 + (target_pos[1] - self.my_tank_dict["position"][1])**2)
     
+    def create_path_to_enemy_tank(self, tank_pos):
+        """
+        num_points and radius is hardcoded values
+        """
+        num_points = 6
+        radius = 80
 
+        min_distance = 9999
+        coord_out = None
+        for i in range(num_points):
+            angle = 2 * math.pi * i / num_points
+            x = tank_pos[0] + radius * math.cos(angle)
+            y = tank_pos[1] + radius * math.sin(angle)
+            distance = self.get_target_distance_from_tank([x, y])
+            if distance < min_distance:
+                min_distance = distance
+                coord_out = [math.ceil(x), math.ceil(y)]
+            
+        
+        return coord_out
+    
     def go_random_direction(self):
         """
         Return random angle 1-360 in Int.
@@ -200,14 +244,14 @@ class Game:
         Get other random direction if near boundary
         NOTE: Find optimal value for define_near 
         """
-        define_near = 100
+        define_near = 90
 
         #Check all 4 boundaries 
         all_boundaries = {
-            "top_plane": [self.top_right_boundary, self.top_left_boundary],
-            "left_plane": [self.top_left_boundary, self.bot_left_boundary],
-            "bot_plane": [self.bot_left_boundary, self.bot_right_boundary],
-            "right_plane": [self.top_right_boundary, self.bot_right_boundary]
+            "top_plane": [self.top_right_boundary, self.top_left_boundary, 220, 320],
+            "left_plane": [self.top_left_boundary, self.bot_left_boundary, 410, 310],
+            "bot_plane": [self.bot_left_boundary, self.bot_right_boundary, 140, 40],
+            "right_plane": [self.top_right_boundary, self.bot_right_boundary, 130, 230]
         }
 
         near_plane = []
@@ -225,22 +269,36 @@ class Game:
                 plane = near_plane[0]
                 match(plane):
                     case "top_plane":
-                        self.tank_current_path = None
+                        #self.tank_current_path = None
                         self.tank_current_movement_direction = random.randint(220,320)
                     case "left_plane":
-                        self.tank_current_path = None
-                        self.tank_current_movement_direction = random.randint(50,310)
+                        #self.tank_current_path = None
+                        self.tank_current_movement_direction = random.randint(310, 410)
                     case "bot_plane":
-                        self.tank_current_path = None
+                        #self.tank_current_path = None
                         self.tank_current_movement_direction = random.randint(40,140)
                     case "right_plane":
-                        self.tank_current_path = None
+                        #self.tank_current_path = None
                         self.tank_current_movement_direction = random.randint(130, 230)
                     case _:
                         pass
             case _:
                 pass
-        
+    
+    def shoot_direction(self, target_pos):
+        """
+        Courtesy of ChatGPT
+        modified to likings :)
+        """
+        x1, y1 = self.my_tank_dict["position"][0], self.my_tank_dict["position"][1]
+        x2, y2 = target_pos[0], target_pos[1]
+        delta_x = x2 - x1
+        delta_y = y2 - y1
+        theta_radians = math.atan2(delta_y, delta_x)
+        angle_degrees = math.degrees(theta_radians)
+        if angle_degrees < 0:
+            return 360 + angle_degrees
+        return random.uniform(angle_degrees - 3, angle_degrees + 3)
 
     def respond_to_turn(self):
         """
@@ -250,15 +308,47 @@ class Game:
         # Write your code here... For demonstration, this bot just shoots randomly every turn.
         post_message = {}
 
-        #Check init stage
-        if self.tank_current_movement_direction is None and self.tank_current_path is None:
-            self.tank_current_movement_direction = self.go_random_direction()
-        
-        #If Path is None keep moving
-        if self.tank_current_path is None:
-            post_message["move"] = self.tank_current_movement_direction
+        match(self.tank_state):
+            case TankState.DEFENSIVE:
+                #Check init stage - DEFENSIVE is always init
+                if self.tank_current_movement_direction is None and self.tank_current_path is None:
+                    self.tank_current_movement_direction = self.go_random_direction()
+                
+                #If Path is None keep moving
+                if self.tank_current_path is None:
+                    post_message["move"] = self.tank_current_movement_direction
+                
+                #Check if enemy detectable
+                try:
+                    enemy_on_site = self.tank_detectable_object[self.enemy_tank_id]
+                    post_message["shoot"] = self.shoot_direction(enemy_on_site["position"])
+                except KeyError:
+                    pass
 
-        #Check object surrounding tank
-        self.get_other_direction_if_near_boundary()
+                #Check object surrounding tank
+                self.get_other_direction_if_near_boundary()
+
+            case TankState.ATTACK:
+
+                #Check create path to enemy tank
+                suggested_path = self.create_path_to_enemy_tank(self.enemy_tank_dict["position"])
+                if self.tank_current_path is None or self.tank_current_path != suggested_path:
+                    self.tank_current_path = suggested_path
+                    post_message["path"] = suggested_path
+                
+                if self.my_tank_dict["velocity"] == [0.0,0.0]:
+                    self.tank_state = TankState.DEFENSIVE
+
+                    #re-initialise var
+                    self.tick = -1
+                    self.tank_current_movement_direction = None
+                    self.tank_current_path = None
+                    
+            case _:
+                pass
+        print(self.tank_state, file=sys.stderr)
         #Post message
+        self.tick += 1
+        if self.tick > 15:
+            self.tank_state = TankState.ATTACK
         comms.post_message(post_message)
