@@ -131,13 +131,16 @@ class Game:
             # DO something with it
             match object_game["type"]:
                 case ObjectTypes.TANK.value:
-                    print("TANK DETECTED", file=sys.stderr)
+                    if key_object == self.tank_id:
+                        continue
+                    else:
+                        pass
                 case ObjectTypes.BULLET.value:
-                    print("BULLET DETECTED", file=sys.stderr)
+                    pass
                 case ObjectTypes.WALL.value:
-                    print("WALL DETECTED", file=sys.stderr)
+                    pass
                 case ObjectTypes.DESTRUCTIBLE_WALL.value:
-                    print("DESTRUCTIBEL WALL DETECETED", file=sys.stderr)
+                    pass
                 case ObjectTypes.BOUNDARY.value:
                     # Skip boundary object type
                     continue
@@ -145,16 +148,13 @@ class Game:
                     # Skip Closing Boundary object type
                     continue
                 case ObjectTypes.POWERUP.value:
-                    print("POWERUP DETECETD", file=sys.stderr)
+                    pass
                 case _:
                     continue
 
             
 
             pass
-        print("-----------END OF Obv----------", file=sys.stderr)
-        print(self.tank_id, file=sys.stderr)
-        print("-----------END OF Obv----------", file=sys.stderr)
 
         return True
     
