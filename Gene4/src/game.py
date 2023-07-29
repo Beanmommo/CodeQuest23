@@ -7,6 +7,13 @@ import sys
 from enum import Enum
 
 class TankState(Enum):
+    """
+    DEFENSIVE - Tank does not use path and only rely on current_movement_direction
+    GO_FOR_PU - Tank uses Path to grab PU
+    ATTACK - Tank uses Path to go near player (Check func create_path_to_enemy_tank) - can change radius 
+
+    GO_FOR_PU and ATTACK state will be changed to DEFENSIVE if tank near boundary plane
+    """
     DEFENSIVE = 0
     GO_FOR_PU = 1
     ATTACK = 2
@@ -34,9 +41,13 @@ class Game:
         self.enemy_tank_dict = None
         self.tank_state = TankState.DEFENSIVE
 
+        #Set optimal velocity to >50%
+        self.optimal_velocity = 141.42 * 0.5
         #Current Tank movement
         self.tank_current_movement_direction = None
         self.tank_current_path = None
+        self.tank_current_PU_target = None
+    
 
         #Tank object detection
         self.tank_detectable_object = {}
@@ -144,7 +155,19 @@ class Game:
             #TODO: Check distance of object between tank Eliminate if too far
             object_pos = object_game["position"]
             distance_from_object = self.get_target_distance_from_tank(object_pos)
-            if distance_from_object > 300:
+
+            #Automaticly add Health and Damage/ Avoid Speed(try not to go there)
+            if object_game["type"] is ObjectTypes.POWERUP.value:
+                if object_game["powerup_type"] is "HEALTH" or object_game["powerup_type"] is "DAMAGE":
+                    self.tank_detectable_object[key_object] = object_game
+
+                    #Initialise PU target
+                    if self.tank_current_PU_target is None:
+                        self.tank_current_PU_target = key_object
+                    continue
+
+            #Detectable range 500, remove anything not in range
+            if distance_from_object > 500:
                 try:
                     del self.tank_detectable_object[key_object]
                 except KeyError:
@@ -161,28 +184,17 @@ class Game:
                         pass
                 case ObjectTypes.BULLET.value:
                     # add object to tank_detectable_object
-                    self.tank_detectable_object[key_object] = object_game
-                    pass
+                    continue
                 case ObjectTypes.WALL.value:
                     # Detect if it is so near, get other directionn
                     # add object to tank_detectable_object
-                    self.tank_detectable_object[key_object] = object_game
-                    pass
+                    continue
                 case ObjectTypes.DESTRUCTIBLE_WALL.value:
                     # add object to tank_detectable_object
                     self.tank_detectable_object[key_object] = object_game
                     pass
-                case ObjectTypes.BOUNDARY.value:
-                    # Skip boundary object type
-                    continue
-                case ObjectTypes.CLOSING_BOUNDARY.value:
-                    # Skip Closing Boundary object type
-                    continue
-                case ObjectTypes.POWERUP.value:
-                    pass
                 case _:
                     continue
-            pass
 
         return True
     
@@ -267,18 +279,25 @@ class Game:
             # First priority to cancel all path and find a new random angle
             case 1:
                 plane = near_plane[0]
+                if self.tank_state != TankState.DEFENSIVE:
+                        self.tank_state = TankState.DEFENSIVE
+                        self.tank_current_path = None
+                        self.tick = -1
+                if self.tank_state is TankState.GO_FOR_PU:
+                    try:
+                        del self.tank_detectable_object[self.tank_current_PU_target]
+                    except KeyError:
+                        pass
+                    self.tank_current_PU_target = None
+                    
                 match(plane):
                     case "top_plane":
-                        #self.tank_current_path = None
                         self.tank_current_movement_direction = random.randint(220,320)
                     case "left_plane":
-                        #self.tank_current_path = None
                         self.tank_current_movement_direction = random.randint(310, 410)
                     case "bot_plane":
-                        #self.tank_current_path = None
                         self.tank_current_movement_direction = random.randint(40,140)
                     case "right_plane":
-                        #self.tank_current_path = None
                         self.tank_current_movement_direction = random.randint(130, 230)
                     case _:
                         pass
@@ -299,14 +318,45 @@ class Game:
         if angle_degrees < 0:
             return 360 + angle_degrees
         return random.uniform(angle_degrees - 3, angle_degrees + 3)
+    
+    def check_if_tank_in_optimal_velocity(self):
+        """
+        Check velocity of the tank, if they are in optimal velocity
+        :return: Bool
+        True if tank in optimal velocity
+        False if not
+        """
+        tank_velocity_float = self.my_tank_dict["velocity"]
+        current_tank_velocity = math.sqrt(tank_velocity_float[0]**2 + tank_velocity_float[1]**2)
+        if current_tank_velocity > self.optimal_velocity:
+            return True
+        else:
+            return False
+        
 
     def respond_to_turn(self):
         """
         This is where you should write your bot code to process the data and respond to the game.
         """
-
+        pause_tick = False
         # Write your code here... For demonstration, this bot just shoots randomly every turn.
         post_message = {}
+
+        #Check if tank is not moving on optimum speed
+        if self.check_if_tank_in_optimal_velocity() is False:
+            # change movement direction
+            self.tank_current_movement_direction = self.go_random_direction()
+
+        #Check if there is important powerups!! when defensive mode
+        if self.tank_state is TankState.DEFENSIVE:
+            for key in self.tank_detectable_object:
+                object_game = self.tank_detectable_object[key]
+                if object_game["type"] is ObjectTypes.POWERUP.value:
+                    self.tank_current_PU_target = key
+                    self.tank_state = TankState.GO_FOR_PU
+                    break
+
+        #If current path is initialised
 
         match(self.tank_state):
             case TankState.DEFENSIVE:
@@ -317,16 +367,6 @@ class Game:
                 #If Path is None keep moving
                 if self.tank_current_path is None:
                     post_message["move"] = self.tank_current_movement_direction
-                
-                #Check if enemy detectable
-                try:
-                    enemy_on_site = self.tank_detectable_object[self.enemy_tank_id]
-                    post_message["shoot"] = self.shoot_direction(enemy_on_site["position"])
-                except KeyError:
-                    pass
-
-                #Check object surrounding tank
-                self.get_other_direction_if_near_boundary()
 
             case TankState.ATTACK:
 
@@ -343,12 +383,26 @@ class Game:
                     self.tick = -1
                     self.tank_current_movement_direction = None
                     self.tank_current_path = None
-                    
+            
+            case TankState.GO_FOR_PU:
+                pause_tick = True
+                if self.tank_current_path is None or self.tank_current_path != self.tank_detectable_object[self.tank_current_PU_target]:
+                    self.tank_current_path = self.tank_detectable_object[self.tank_current_PU_target]
             case _:
                 pass
+        
         print(self.tank_state, file=sys.stderr)
+        #Check object surrounding tank
+        self.get_other_direction_if_near_boundary()
         #Post message
-        self.tick += 1
+        #Check if enemy detectable -> Shoot whenever u see them
+        try:
+            enemy_on_site = self.tank_detectable_object[self.enemy_tank_id]
+            post_message["shoot"] = self.shoot_direction(enemy_on_site["position"])
+        except KeyError:
+            pass
+        if not pause_tick:
+            self.tick += 1
         if self.tick > 15:
             self.tank_state = TankState.ATTACK
         comms.post_message(post_message)
