@@ -3,6 +3,7 @@ import random
 import comms
 from object_types import ObjectTypes
 import sys
+import math
 
 class Game:
     """
@@ -91,6 +92,15 @@ class Game:
         self.objects.update(self.current_turn_message["message"]["updated_objects"])
 
         return True
+    
+    def calculate_angle(self, x1, y1, x2, y2):
+        delta_x = x2 - x1
+        delta_y = y2 - y1
+        theta_radians = math.atan2(delta_y, delta_x)
+        angle_degrees = math.degrees(theta_radians)
+        if angle_degrees < 0:
+            return 360 + angle_degrees
+        return angle_degrees
 
     def respond_to_turn(self):
         """
@@ -100,20 +110,21 @@ class Game:
         # Write your code here... For demonstration, this bot just shoots randomly every turn.
 
         #get game message
-        updated_object_message = self.current_turn_message["message"][self.UPDATED_OBJECTS]
-        enemy_tank_coord = None
-        if self.enemy_tank_id in updated_object_message:
-            enemy_tank_coord = updated_object_message[self.enemy_tank_id]["position"]
+        post_message = {}
+        enemy_tank_coord = self.objects[self.enemy_tank_id]["position"]
+        our_tank_coord = self.objects[self.tank_id]["position"]
 
+
+        #Find shoot angle
+        shoot_angle = self.calculate_angle(our_tank_coord[0], our_tank_coord[1], enemy_tank_coord[0], enemy_tank_coord[1])
+        post_message["shoot"] = shoot_angle
 
         # print(updated_object_message, file=sys.stderr)
         print("Start of test-------------------------------", file=sys.stderr)
         print(self.current_turn_message, file=sys.stderr)
         print("END of test-------------------------------", file=sys.stderr)
 
-        post_message = {
-            "shoot": random.uniform(0, random.randint(1, 360))
-            }
+        
         if enemy_tank_coord != None:
             post_message["path"] = enemy_tank_coord
         
