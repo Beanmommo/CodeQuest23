@@ -150,21 +150,21 @@ class Game:
             #Skip boundaries 
             if object_game["type"] == ObjectTypes.CLOSING_BOUNDARY.value or object_game["type"] == ObjectTypes.BOUNDARY.value:
                 continue
-            
+
+
+            #Automaticly add Health and Damage/ Avoid Speed(try not to go there)
+            if object_game["type"] == ObjectTypes.POWERUP.value:
+                if object_game["powerup_type"] == "HEALTH" or object_game["powerup_type"] == "DAMAGE":
+                    self.tank_detectable_object[key_object] = object_game
+
+                    #Initialise PU target
+                    # if self.tank_current_PU_target is None:
+                    #     self.tank_current_PU_target = key_object
+                    continue
             #Check if near 500 unit of TANK
             #TODO: Check distance of object between tank Eliminate if too far
             object_pos = object_game["position"]
             distance_from_object = self.get_target_distance_from_tank(object_pos)
-
-            #Automaticly add Health and Damage/ Avoid Speed(try not to go there)
-            if object_game["type"] is ObjectTypes.POWERUP.value:
-                if object_game["powerup_type"] is "HEALTH" or object_game["powerup_type"] is "DAMAGE":
-                    self.tank_detectable_object[key_object] = object_game
-
-                    #Initialise PU target
-                    if self.tank_current_PU_target is None:
-                        self.tank_current_PU_target = key_object
-                    continue
 
             #Detectable range 500, remove anything not in range
             if distance_from_object > 500:
@@ -191,8 +191,8 @@ class Game:
                     continue
                 case ObjectTypes.DESTRUCTIBLE_WALL.value:
                     # add object to tank_detectable_object
-                    self.tank_detectable_object[key_object] = object_game
-                    pass
+                    #self.tank_detectable_object[key_object] = object_game
+                    continue
                 case _:
                     continue
 
@@ -392,6 +392,7 @@ class Game:
                 pass
         
         print(self.tank_state, file=sys.stderr)
+        print(self.tank_detectable_object, file=sys.stderr)
         #Check object surrounding tank
         self.get_other_direction_if_near_boundary()
         #Post message
