@@ -4,6 +4,16 @@ import comms
 from object_types import ObjectTypes
 import sys
 import math
+from enum import Enum
+
+class AvoidBoundaryAngle(Enum):
+    """
+    Enum to get angle move direction if close to certain vertex
+    """
+    TOPLEFT_V = 0
+    TOPRIGHT_V = 1
+    BOTLEFT_V = 2
+    BOT_RIGHT= 3
 
 class Game:
     """
@@ -21,11 +31,13 @@ class Game:
     def __init__(self):
         tank_id_message: dict = comms.read_message()
         self.last_path_req = None
-
         self.tank_id = tank_id_message["message"]["your-tank-id"]
-        self.enemy_tank_id = tank_id_message["message"]["enemy-tank-id"]
-
+        self.enemy_tank_id = tank_id_message["message"]["enemy-tank-id"
+                                                        ]
+        self.closing_boundaries_key = None
         self.current_turn_message = None
+        self.enemy_tank = None
+        self.my_tank = None
 
         # We will store all game objects here
         self.objects = {}
@@ -52,9 +64,15 @@ class Game:
 
         # Read all the objects and find the boundary objects
         boundaries = []
-        for game_object in self.objects.values():
+        for key in self.objects:
+            
+            game_object = self.objects[key]
+
             if game_object["type"] == ObjectTypes.BOUNDARY.value:
                 boundaries.append(game_object)
+
+            if game_object["type"] == ObjectTypes.CLOSING_BOUNDARY.value:
+                self.closing_boundaries_key = key
 
         # The biggest X and the biggest Y among all Xs and Ys of boundaries must be the top right corner of the map.
 
@@ -91,12 +109,56 @@ class Game:
         # NOTE: you might want to do some additional logic here. For example check if a new bullet has been shot or a
         # new powerup is now spawned, etc.
         self.objects.update(self.current_turn_message["message"]["updated_objects"])
+        
+        
+
+        #Values that need to keep on track
+        self.closing_boundaries = self.objects[self.closing_boundaries_key]
+        self.enemy_tank = self.objects[self.enemy_tank_id]
+        self.my_tank = self.objects[self.tank_id]
 
         return True
-    
-    def calculate_angle(self, x1, y1, x2, y2):
+    def get_angle_direction(x_speed, y_speed):
         """
         Courtesy of ChatGPT
+        get object angle direction from velocity input
+        """
+        # Calculate the angle in radians using atan2
+        angle_rad = math.atan2(y_speed, x_speed)
+        
+        # Convert the angle from radians to degrees
+        angle_deg = math.degrees(angle_rad)
+
+        # Ensure the angle is within [0, 360] range
+        if angle_deg < 0:
+            angle_deg += 360
+
+        return angle_deg
+    
+    def shoot_object_direction(self, target_object):
+        """
+        From our tank shoot to ;param; target_object
+        target_object accepted ObjectType = Tank, Bullet, DestroyableWall
+        """
+        my_tank_position = self.my_tank["position"]
+        target_object_position = target_object["position"]
+        
+        #Check if it is destructable wall
+        if target_object["type"] == ObjectTypes.DESTRUCTIBLE_WALL.value:
+            target_object_velocity = [0,0]
+        else:
+            target_object_velocity = target_object["velocity"]
+
+        #Check distance of target in next 
+        # TODO: continue after tank can see what surrounds him
+
+        # init_distance = self.euclidean_distance(my_tank_position[0], my_tank_position[1], target_object_position[0], target_object_position[1])
+
+
+    def shoot_direction(self, x1, y1, x2, y2):
+        """
+        Courtesy of ChatGPT
+        
         """
         delta_x = x2 - x1
         delta_y = y2 - y1
@@ -105,16 +167,23 @@ class Game:
         if angle_degrees < 0:
             return 360 + angle_degrees
         return angle_degrees
-
-    def calculate_distance(x1, y1, x2, y2):
-        """
-        Courtesy of ChatGPT
-        """
-        delta_x = x2 - x1
-        delta_y = y2 - y1
-        distance = math.sqrt(delta_x2 + delta_y2)
-        return distance
     
+    def euclidean_distance(self, x1, y1, x2, y2):
+        """
+        get distance from 2 object (1) and (2)
+        """
+        return math.sqrt((x2 - x1)**2 + (y2 - y1)**2)
+    
+    def get_direction_if_near_boundaries(self):
+        boundary_position = self.closing_boundaries["position"]
+        for vertex_index in range(len(boundary_position)):
+            vx2, vy2 = boundary_position[vertex_index]
+            tank_vertex_distance = self.euclidean_distance(self.my_tank[0], self.my_tank[0], vx2, vy2)
+            #if tank_vertex_distance < 100:
+            print(vertex_position)
+
+        pass
+
 
     def respond_to_turn(self):
         """
@@ -125,20 +194,26 @@ class Game:
 
         #get game message
         post_message = {}
-        enemy_tank_coord = self.objects[self.enemy_tank_id]["position"]
-        our_tank_coord = self.objects[self.tank_id]["position"]
+        
+
+        #Find distance
+        distance_from_enemytank = self.euclidean_distance(self.my_tank[0], self.my_tank[1], self.enemy_tank[0], self.enemy_tank[1])
+        print(distance_from_enemytank, file=sys.stderr)
+
         #Find shoot angle
-        shoot_angle = self.calculate_angle(our_tank_coord[0], our_tank_coord[1], enemy_tank_coord[0], enemy_tank_coord[1])
-        post_message["shoot"] = shoot_angle
+        if distance < 200:
+            shoot_angle = self.shoot_direction(self.my_tank[0], self.my_tank[1], self.enemy_tank[0], self.enemy_tank[1])
+            post_message["shoot"] = shoot_angle
         
         # print(updated_object_message, file=sys.stderr)
         # print("Start of test-------------------------------", file=sys.stderr)
         # print("END of test-------------------------------", file=sys.stderr)
-
+        print(self.closing_boundaries)
         #Shoot 
         
-        if self.last_path_req is None or self.last_path_req != enemy_tank_coord:
-            post_message["path"] = enemy_tank_coord
+        if self.last_path_req is None or self.last_path_req != self.enemy_tank:
+            self.last_path_req = self.enemy_tank
+            post_message["path"] = self.enemy_tank
         
         comms.post_message(post_message)
     

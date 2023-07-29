@@ -2,8 +2,8 @@ import random
 
 import comms
 from object_types import ObjectTypes
-import sys
 import math
+import sys
 
 class Game:
     """
@@ -16,24 +16,30 @@ class Game:
     - current_turn_message: a copy of the message received this turn. It will be updated everytime `read_next_turn_data`
         is called and will be available to be used in `respond_to_turn` if needed.
     """
-
-    
     def __init__(self):
         tank_id_message: dict = comms.read_message()
-        self.last_path_req = None
-
         self.tank_id = tank_id_message["message"]["your-tank-id"]
         self.enemy_tank_id = tank_id_message["message"]["enemy-tank-id"]
-
         self.current_turn_message = None
+
+        #Tank information
+        self.my_tank_dict = None
+        self.enemy_tank_dict = None
+
+        self.tank_current_movement_direction = None
+        self.tank_current_path = None
 
         # We will store all game objects here
         self.objects = {}
 
-        #Initialise static values
-        self.UPDATED_OBJECTS = "updated_objects"
-        self.DELETED_OBJECTS = "deleted_objects"
-        self.MESSAGE = "message"
+        #Key of the closing boundary
+        self.closing_boundaries_key = None
+
+        #Store each 4 boundaries
+        self.top_right_boundary = None
+        self.bot_right_boundary = None
+        self.bot_left_boundary = None
+        self.top_left_boundary = None
 
         next_init_message = comms.read_message()
         while next_init_message != comms.END_INIT_SIGNAL:
@@ -52,9 +58,15 @@ class Game:
 
         # Read all the objects and find the boundary objects
         boundaries = []
-        for game_object in self.objects.values():
+        for key in self.objects:
+            
+            game_object = self.objects[key]
+
             if game_object["type"] == ObjectTypes.BOUNDARY.value:
                 boundaries.append(game_object)
+
+            if game_object["type"] == ObjectTypes.CLOSING_BOUNDARY.value:
+                self.closing_boundaries_key = key
 
         # The biggest X and the biggest Y among all Xs and Ys of boundaries must be the top right corner of the map.
 
@@ -92,28 +104,41 @@ class Game:
         # new powerup is now spawned, etc.
         self.objects.update(self.current_turn_message["message"]["updated_objects"])
 
+        #Update my tank and enemy tank
+        self.my_tank_dict = self.objects[self.tank_id]
+        self.enemy_tank_dict = self.objects[self.enemy_tank_id]
+
+        #Update boundary
+        self.top_right_boundary = self.objects[self.closing_boundaries_key]["position"][0]
+        self.bot_right_boundary = self.objects[self.closing_boundaries_key]["position"][1]
+        self.bot_left_boundary = self.objects[self.closing_boundaries_key]["position"][2]
+        self.top_left_boundary = self.objects[self.closing_boundaries_key]["position"][3]
+
+        #implement algorithm for items of interest around tank
+        for key_object in self.objects:
+            object_game = self.objects[key_object]
+            
+            
+
+            pass
+
         return True
     
-    def calculate_angle(self, x1, y1, x2, y2):
+    def get_target_distance_from_tank(self, target_pos):
         """
-        Courtesy of ChatGPT
+        get distance from own tank to target object
+        object_type: Powerup, Tank, Bullet
         """
-        delta_x = x2 - x1
-        delta_y = y2 - y1
-        theta_radians = math.atan2(delta_y, delta_x)
-        angle_degrees = math.degrees(theta_radians)
-        if angle_degrees < 0:
-            return 360 + angle_degrees
-        return angle_degrees
+        x_target, y_target = target_pos[0], target_pos[1]
+        
+        tank_pos = self.my_tank_dict["position"]
+        x_tank, y_tank = tank_pos[0], tank_pos[1]
 
-    def calculate_distance(x1, y1, x2, y2):
-        """
-        Courtesy of ChatGPT
-        """
-        delta_x = x2 - x1
-        delta_y = y2 - y1
-        distance = math.sqrt(delta_x2 + delta_y2)
-        return distance
+        return math.sqrt((x_target - x_tank)**2 + (y_target - y_tank)**2)
+    
+
+    def go_random_direction(self):
+        return random.randint(1,360)
     
 
     def respond_to_turn(self):
@@ -122,26 +147,20 @@ class Game:
         """
 
         # Write your code here... For demonstration, this bot just shoots randomly every turn.
-
-        #get game message
         post_message = {}
-        enemy_tank_coord = self.objects[self.enemy_tank_id]["position"]
-        our_tank_coord = self.objects[self.tank_id]["position"]
-        #Find shoot angle
-        shoot_angle = self.calculate_angle(our_tank_coord[0], our_tank_coord[1], enemy_tank_coord[0], enemy_tank_coord[1])
-        post_message["shoot"] = shoot_angle
-        
-        # print(updated_object_message, file=sys.stderr)
-        # print("Start of test-------------------------------", file=sys.stderr)
-        # print("END of test-------------------------------", file=sys.stderr)
 
-        #Shoot 
+        #Check init stage
+        if self.tank_current_movement_direction is None and self.tank_current_path is None:
+            self.tank_current_movement_direction = self.go_random_direction()
         
-        if self.last_path_req is None or self.last_path_req != enemy_tank_coord:
-            post_message["path"] = enemy_tank_coord
-        
+        #If Path is None keep moving
+        if self.tank_current_path is None:
+            post_message["move"] = self.tank_current_movement_direction
+
+        #Check object surrounding tank
+        print(self.top_left_boundary, file=sys.stderr)
+        print(self.bot_left_boundary, file=sys.stderr)
+        print(self.bot_right_boundary, file=sys.stderr)
+        print(self.top_right_boundary, file=sys.stderr)
+        #Post message
         comms.post_message(post_message)
-    
-        
-
-
