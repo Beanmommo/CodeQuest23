@@ -5,6 +5,7 @@ from object_types import ObjectTypes
 import math
 import sys
 
+
 class Game:
     """
     Stores all information about the game and manages the communication cycle.
@@ -26,8 +27,11 @@ class Game:
         self.my_tank_dict = None
         self.enemy_tank_dict = None
 
+        #Current Tank movement
         self.tank_current_movement_direction = None
         self.tank_current_path = None
+
+        #Tank object detection
 
         # We will store all game objects here
         self.objects = {}
@@ -109,10 +113,10 @@ class Game:
         self.enemy_tank_dict = self.objects[self.enemy_tank_id]
 
         #Update boundary
-        self.top_right_boundary = self.objects[self.closing_boundaries_key]["position"][0]
-        self.bot_right_boundary = self.objects[self.closing_boundaries_key]["position"][1]
-        self.bot_left_boundary = self.objects[self.closing_boundaries_key]["position"][2]
-        self.top_left_boundary = self.objects[self.closing_boundaries_key]["position"][3]
+        self.top_left_boundary = self.objects[self.closing_boundaries_key]["position"][0]
+        self.bot_left_boundary = self.objects[self.closing_boundaries_key]["position"][1]
+        self.bot_right_boundary = self.objects[self.closing_boundaries_key]["position"][2]
+        self.top_right_boundary = self.objects[self.closing_boundaries_key]["position"][3]
 
         #implement algorithm for items of interest around tank
         for key_object in self.objects:
@@ -163,17 +167,80 @@ class Game:
         get distance from own tank to target object
         object_type: Powerup, Tank, Bullet
         """
-        x_target, y_target = target_pos[0], target_pos[1]
-        
-        tank_pos = self.my_tank_dict["position"]
-        x_tank, y_tank = tank_pos[0], tank_pos[1]
 
-        return math.sqrt((x_target - x_tank)**2 + (y_target - y_tank)**2)
+        return math.sqrt((target_pos[0] - self.my_tank_dict["position"][0])**2 + (target_pos[1] - self.my_tank_dict["position"][1])**2)
     
 
     def go_random_direction(self):
+        """
+        Return random angle 1-360 in Int.
+        """
         return random.randint(1,360)
     
+    def distance_tank_to_boundary(self, first_v_pos, second_v_pos):
+        """
+        Check distance between tank and boundary line
+        :param: Combination of param can represent TOP_PLANE of boundary consisitng:
+        first_v_pos as top_left_vertex
+        second_v_pos as top_right_vertex
+        NOTE: There are 4 Plane (TOP, LEFT, BOT and RIGHT)
+        """
+        # Calculate the perpendicular distance from the point (x0, y0) to the line (x1, y1)-(x2, y2)
+        x0, y0 = self.my_tank_dict["position"][0], self.my_tank_dict["position"][1]
+        x1, y1 = first_v_pos[0], first_v_pos[1]
+        x2, y2 = second_v_pos[0], second_v_pos[1]
+        numerator = abs((y2 - y1) * x0 - (x2 - x1) * y0 + x2 * y1 - y2 * x1)
+        denominator = math.sqrt((y2 - y1)**2 + (x2 - x1)**2)
+        return numerator / denominator
+        
+
+
+    def get_other_direction_if_near_boundary(self):
+        """
+        Get other random direction if near boundary
+        NOTE: Find optimal value for define_near 
+        """
+        define_near = 100
+
+        #Check all 4 boundaries 
+        all_boundaries = {
+            "top_plane": [self.top_right_boundary, self.top_left_boundary],
+            "left_plane": [self.top_left_boundary, self.bot_left_boundary],
+            "bot_plane": [self.bot_left_boundary, self.bot_right_boundary],
+            "right_plane": [self.top_right_boundary, self.bot_right_boundary]
+        }
+
+        near_plane = []
+
+        for key in all_boundaries:
+            vertex_position_arr = all_boundaries[key]
+            distance_from_plane = self.distance_tank_to_boundary(vertex_position_arr[0], vertex_position_arr[1])
+            if distance_from_plane < define_near:
+                near_plane.append(key)
+        
+        match(len(near_plane)):
+            #Values are hardcoded FOV = 100 radius
+            # First priority to cancel all path and find a new random angle
+            case 1:
+                plane = near_plane[0]
+                match(plane):
+                    case "top_plane":
+                        self.tank_current_path = None
+                        self.tank_current_movement_direction = random.randint(220,320)
+                    case "left_plane":
+                        self.tank_current_path = None
+                        self.tank_current_movement_direction = random.randint(50,310)
+                    case "bot_plane":
+                        self.tank_current_path = None
+                        self.tank_current_movement_direction = random.randint(40,140)
+                    case "right_plane":
+                        self.tank_current_path = None
+                        self.tank_current_movement_direction = random.randint(130, 230)
+                    case _:
+                        pass
+            case _:
+                pass
+        
 
     def respond_to_turn(self):
         """
@@ -192,6 +259,6 @@ class Game:
             post_message["move"] = self.tank_current_movement_direction
 
         #Check object surrounding tank
-        
+        self.get_other_direction_if_near_boundary()
         #Post message
         comms.post_message(post_message)
