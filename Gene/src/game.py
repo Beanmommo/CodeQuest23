@@ -2,7 +2,7 @@ import random
 
 import comms
 from object_types import ObjectTypes
-
+import sys
 
 class Game:
     """
@@ -15,14 +15,23 @@ class Game:
     - current_turn_message: a copy of the message received this turn. It will be updated everytime `read_next_turn_data`
         is called and will be available to be used in `respond_to_turn` if needed.
     """
+
+    
     def __init__(self):
         tank_id_message: dict = comms.read_message()
+
         self.tank_id = tank_id_message["message"]["your-tank-id"]
+        self.enemy_tank_id = tank_id_message["message"]["enemy-tank-id"]
 
         self.current_turn_message = None
 
         # We will store all game objects here
         self.objects = {}
+
+        #Initialise static values
+        self.UPDATED_OBJECTS = "updated_objects"
+        self.DELETED_OBJECTS = "deleted_objects"
+        self.MESSAGE = "message"
 
         next_init_message = comms.read_message()
         while next_init_message != comms.END_INIT_SIGNAL:
@@ -90,10 +99,27 @@ class Game:
 
         # Write your code here... For demonstration, this bot just shoots randomly every turn.
 
-        comms.post_message({
-            "shoot": random.uniform(0, random.randint(1, 360)),
-            "move": 
-        })
+        #get game message
+        updated_object_message = self.current_turn_message["message"][self.UPDATED_OBJECTS]
+        enemy_tank_coord = None
+        if self.enemy_tank_id in updated_object_message:
+            enemy_tank_coord = updated_object_message[self.enemy_tank_id]["position"]
+
+
+        # print(updated_object_message, file=sys.stderr)
+        print("Start of test-------------------------------", file=sys.stderr)
+        print(self.current_turn_message, file=sys.stderr)
+        print("END of test-------------------------------", file=sys.stderr)
+
+        post_message = {
+            "shoot": random.uniform(0, random.randint(1, 360))
+            }
+        if enemy_tank_coord != None:
+            post_message["path"] = enemy_tank_coord
+        
+        comms.post_message(post_message)
+
+    
         
 
 
